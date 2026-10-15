@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>聲控解謎成語大冒險 - Voice Idiom Puzzle Game</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tone.js for Sound Effects -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+    
+    body {
+      font-family: 'Noto Sans TC', 'Fredoka', sans-serif;
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+      min-height: 100vh;
+      color: #f8fafc;
+      overflow-x: hidden;
+    }
+
+    .glass-card {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    .glow-missing {
+      animation: pulseGlow 1.5s infinite alternate;
+      border: 3px dashed #fbbf24;
+      background: rgba(251, 191, 36, 0.15);
+    }
+
+    @keyframes pulseGlow {
+      0% {
+        box-shadow: 0 0 5px #fbbf24, inset 0 0 5px #fbbf24;
+        transform: scale(0.98);
+      }
+      100% {
+        box-shadow: 0 0 20px #fbbf24, inset 0 0 10px #fbbf24;
+        transform: scale(1.02);
+      }
+    }
+
+    .char-box-filled {
+      animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.8);
+      color: white;
+    }
+
+    @keyframes popIn {
+      0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+      70% { transform: scale(1.15) rotate(3deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+
+    /* Mic Ripple Effect */
+    .mic-active {
+      position: relative;
+    }
+    .mic-active::before, .mic-active::after {
+      content: '';
+      position: absolute;
+      top: -10px; left: -10px; right: -10px; bottom: -10px;
+      border-radius: 50%;
+      border: 2px solid #ef4444;
+      animation: ripple 1.5s linear infinite;
+    }
+    .mic-active::after {
+      animation-delay: 0.75s;
+    }
+
+    @keyframes ripple {
+      0% { transform: scale(0.8); opacity: 1; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+  </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col items-center justify-between min-h-screen">
+
+  <header class="w-full max-w-4xl flex flex-wrap justify-between items-center gap-4 mb-6 glass-card p-4 rounded-2xl">
+    <div class="flex items-center gap-3">
+      <div class="bg-amber-400 text-indigo-950 p-3 rounded-xl font-bold text-2xl shadow-lg">
+        <i class="fa-solid fa-microphone-lines"></i>
+      </div>
+      <div>
+        <h1 class="text-xl md:text-2xl font-black tracking-wide text-amber-300">聲控解謎成語大冒險</h1>
+        <p class="text-xs md:text-sm text-indigo-200">看提示 ‧ 唸成語 ‧ 語音補字填空解謎</p>
+      </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="flex items-center gap-4 text-center">
+      <div class="bg-indigo-900/60 px-4 py-2 rounded-xl border border-indigo-400/30">
+        <div class="text-xs text-indigo-300">目前得分</div>
+        <div id="score-val" class="text-xl md:text-2xl font-black text-amber-400">0</div>
+      </div>
+      <div class="bg-indigo-900/60 px-4 py-2 rounded-xl border border-indigo-400/30">
+        <div class="text-xs text-indigo-300">連續答對</div>
+        <div id="combo-val" class="text-xl md:text-2xl font-black text-emerald-400">0 🔥</div>
+      </div>
+      <button id="btn-settings" class="p-3 bg-indigo-800/60 hover:bg-indigo-700/80 rounded-xl transition border border-indigo-500/30">
+        <i class="fa-solid fa-gear text-indigo-200"></i>
+      </button>
+    </div>
+  </header>
+
+  <main class="w-full max-w-4xl flex-1 flex flex-col justify-center items-center gap-6 my-auto">
+    
+    <!-- Idiom Category & Level Indicator -->
+    <div class="flex justify-between items-center w-full px-2">
+      <span id="category-badge" class="px-3 py-1 bg-amber-500/20 text-amber-300 text-xs md:text-sm font-semibold rounded-full border border-amber-500/30">
+        <i class="fa-solid fa-layer-group mr-1"></i> 動物類成語
+      </span>
+      <span id="progress-text" class="text-xs md:text-sm font-medium text-indigo-200">
+        關卡：1 / 10
+      </span>
+    </div>
+
+    <!-- Main Question Box -->
+    <div class="w-full glass-card rounded-3xl p-6 md:p-10 flex flex-col items-center gap-8 relative overflow-hidden">
+      
+      <!-- Idiom Character Grid Display -->
+      <div id="idiom-display-container" class="flex justify-center items-center gap-3 md:gap-6 my-4">
+        <!-- Dynamic Character Blocks inserted via JS -->
+      </div>
+
+      <!-- Idiom Clue / Meaning -->
+      <div class="bg-indigo-950/50 rounded-2xl p-4 md:p-6 w-full text-center border border-indigo-500/20">
+        <div class="text-xs md:text-sm text-indigo-300 mb-1 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-lightbulb text-amber-400"></i> 成語釋義與提示：
+        </div>
+        <p id="idiom-meaning" class="text-base md:text-xl font-bold text-slate-100 leading-relaxed">
+          載入題目中...
+        </p>
+      </div>
+
+      <!-- Audio Visualizer / Recognition Feedback Bar -->
+      <div class="w-full flex flex-col items-center gap-2">
+        <div id="speech-recognized-text" class="h-8 text-center text-amber-300 font-bold text-lg tracking-wider transition-all">
+          「請按下下方麥克風，完整唸出成語」
+        </div>
+        
+        <div class="w-full bg-indigo-950/60 h-2 rounded-full overflow-hidden flex items-center px-1">
+          <div id="mic-signal-bar" class="bg-emerald-400 h-1.5 rounded-full w-0 transition-all duration-100"></div>
+        </div>
+      </div>
+
+      <!-- Interactive Controls -->
+      <div class="flex flex-wrap justify-center items-center gap-4 mt-2">
+        <!-- Standard Voice Demo Button -->
+        <button id="btn-demo-speech" class="px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold flex items-center gap-2 shadow-lg transition active:scale-95">
+          <i class="fa-solid fa-volume-high text-amber-300"></i>
+          <span>聽標準發音</span>
+        </button>
+
+        <!-- Main Voice Input Mic Button -->
+        <button id="btn-mic" class="w-20 h-20 rounded-full bg-rose-600 hover:bg-rose-500 text-white font-black text-2xl flex items-center justify-center shadow-2xl transition-all transform hover:scale-105 active:scale-95 border-4 border-rose-400/50">
+          <i class="fa-solid fa-microphone"></i>
+        </button>
+
+        <!-- AI Hint / Gemini Assist Button -->
+        <button id="btn-ai-hint" class="px-5 py-3 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-bold flex items-center gap-2 shadow-lg transition active:scale-95">
+          <i class="fa-solid fa-wand-magic-sparkles text-amber-200"></i>
+          <span>AI 造句小助手</span>
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- AI Hint Modal -->
+  <div id="modal-ai-hint" class="fixed inset-0 bg-black/70 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+    <div class="glass-card max-w-lg w-full rounded-3xl p-6 border border-amber-500/30 flex flex-col gap-4">
+      <div class="flex justify-between items-center border-b border-indigo-500/30 pb-3">
+        <h3 class="text-xl font-bold text-amber-300 flex items-center gap-2">
+          <i class="fa-solid fa-robot"></i> Gemini AI 成語語境導讀
+        </h3>
+        <button id="close-ai-modal" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <div id="ai-modal-content" class="text-slate-200 text-sm md:text-base leading-relaxed my-2 min-h-[100px] flex items-center justify-center">
+        <div class="flex items-center gap-3 text-amber-300">
+          <i class="fa-solid fa-circle-notch animate-spin text-2xl"></i> AI 正在生成生活化的成語情境與提示...
+        </div>
+      </div>
+      <button id="btn-ai-tts" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition">
+        <i class="fa-solid fa-play"></i> 朗讀 AI 情境導讀
+      </button>
+    </div>
+  </div>
+
+  <!-- Settings / Category Modal -->
+  <div id="modal-settings" class="fixed inset-0 bg-black/70 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+    <div class="glass-card max-w-md w-full rounded-3xl p-6 border border-indigo-400/30 flex flex-col gap-5">
+      <h3 class="text-xl font-bold text-indigo-200 flex items-center gap-2">
+        <i class="fa-solid fa-sliders"></i> 遊戲設定與詞庫選單
+      </h3>
+      
+      <div>
+        <label class="text-xs text-indigo-300 block mb-2 font-bold">選擇成語主題分類：</label>
+        <select id="select-category" class="w-full bg-indigo-950/80 border border-indigo-500/40 rounded-xl p-3 text-amber-300 font-bold focus:outline-none focus:border-amber-400">
+          <option value="all">🌟 全部分類 (國小中高年級混合精選)</option>
+          <option value="animals">🦁 動物智慧成語</option>
+          <option value="efforts">💪 努力勵志成語</option>
+          <option value="nature">🏞️ 自然與山水成語</option>
+          <option value="wisdom">🧠 處事與智慧成語</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="text-xs text-indigo-300 block mb-2 font-bold">語音辨識敏感度 (模糊比對閾值)：</label>
+        <input type="range" id="input-sensitivity" min="0.5" max="1" step="0.05" value="0.7" class="w-full accent-amber-400">
+        <div class="flex justify-between text-xs text-indigo-400 mt-1">
+          <span>輕鬆比對 (建議童音)</span>
+          <span>嚴格標準</span>
+        </div>
+      </div>
+
+      <button id="btn-save-settings" class="w-full py-3 bg-amber-500 hover:bg-amber-400 text-indigo-950 font-black rounded-xl transition mt-2">
+        保存並重新開局
+      </button>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="w-full max-w-4xl text-center text-xs text-indigo-300/60 mt-6">
+    國小中高年級 聲控解謎成語教學系統 ‧ 運用 Web Speech API & Web Audio
+  </footer>
+
+  <script>
+    // Elementary School Upper Grade (Grades 3-6) Essential Idiom Library
+    const IDIOM_DATABASE = [
+      // Animals
+      { idiom: "守株待兔", missingIndex: 3, category: "animals", meaning: "比喻拘泥守舊，不知變通；或幻想不勞而獲。", pinyin: "shǒu zhū dài tù" },
+      { idiom: "畫蛇添足", missingIndex: 2, category: "animals", meaning: "比喻多此一舉，反而把事情弄糟糕。", pinyin: "huà shé tiān zú" },
+      { idiom: "狐假虎威", missingIndex: 1, category: "animals", meaning: "比喻藉著有權勢者的威光來欺壓他人。", pinyin: "hú jiǎ hǔ wēi" },
+      { idiom: "井底之蛙", missingIndex: 3, category: "animals", meaning: "比喻見識狹小、眼界狹窄的人。", pinyin: "jǐng dǐ zhī wā" },
+      { idiom: "亡羊補牢", missingIndex: 2, category: "animals", meaning: "比喻犯錯後及時補救，還算來得及。", pinyin: "wáng yáng bǔ láo" },
+      { idiom: "盲人摸象", missingIndex: 3, category: "animals", meaning: "比喻憑片面的觀察就下結論，以偏概全。", pinyin: "máng rén mō xiàng" },
+
+      // Efforts
+      { idiom: "熟能生巧", missingIndex: 3, category: "efforts", meaning: "做事情做熟練了，自然就能掌握技巧。", pinyin: "shú néng shēng qiǎo" },
+      { idiom: "堅持不懈", missingIndex: 3, category: "efforts", meaning: "堅持到底，絲毫不放鬆懈怠。", pinyin: "jiān chí bù xiè" },
+      { idiom: "水滴石穿", missingIndex: 2, category: "efforts", meaning: "比喻只要持之以恆，微小的力量也能完成艱難的事。", pinyin: "shuǐ dī shí chuān" },
+      { idiom: "積少成多", missingIndex: 2, category: "efforts", meaning: "累積少量漸漸聚成多數。", pinyin: "jī shǎo chéng duō" },
+      { idiom: "全力以赴", missingIndex: 3, category: "efforts", meaning: "投入全部的力量去完成事情。", pinyin: "quán lì yǐ fù" },
+
+      // Nature
+      { idiom: "風和日麗", missingIndex: 3, category: "nature", meaning: "形容天氣晴朗，微風和煦，景致優美。", pinyin: "fēng hé rì lì" },
+      { idiom: "鳥語花香", missingIndex: 2, category: "nature", meaning: "鳥兒鳴唱，花朵飄香，形容春天的美好景致。", pinyin: "niǎo yǔ huā xiāng" },
+      { idiom: "山清水秀", missingIndex: 1, category: "nature", meaning: "形容山水景色秀麗宜人。", pinyin: "shān qīng shuǐ xiù" },
+      { idiom: "春暖花開", missingIndex: 3, category: "nature", meaning: "春天氣候暖和，百花盛開。比喻美好的時機。", pinyin: "chūn nuǎn huā kāi" },
+
+      // Wisdom
+      { idiom: "溫故知新", missingIndex: 3, category: "wisdom", meaning: "溫習舊有的知識，從中獲得新的體會與領悟。", pinyin: "wēn gù zhī xīn" },
+      { idiom: "舉一反三", missingIndex: 3, category: "wisdom", meaning: "比喻指從一件事情推類，從而懂得其他許多的道理。", pinyin: "jǔ yī fǎn sān" },
+      { idiom: "取長補短", missingIndex: 2, category: "wisdom", meaning: "吸取別人的長處，來彌補自己的短處。", pinyin: "qǔ cháng bǔ duǎn" },
+      { idiom: "集思廣益", missingIndex: 3, category: "wisdom", meaning: "集中大眾的智慧，廣泛吸收有益的意見。", pinyin: "jí sī guǎng yì" }
+    ];
+
+    let currentQuestions = [];
+    let currentIndex = 0;
+    let score = 0;
+    let combo = 0;
+    let isListening = false;
+    let recognition = null;
+    let selectedCategory = "all";
+    let fuzzyThreshold = 0.7;
+    let currentAIHint = "";
+
+    // DOM Element References
+    const idiomDisplayContainer = document.getElementById("idiom-display-container");
+    const idiomMeaningEl = document.getElementById("idiom-meaning");
+    const recognizedTextEl = document.getElementById("speech-recognized-text");
+    const btnMic = document.getElementById("btn-mic");
+    const btnDemoSpeech = document.getElementById("btn-demo-speech");
+    const btnAiHint = document.getElementById("btn-ai-hint");
+    const scoreValEl = document.getElementById("score-val");
+    const comboValEl = document.getElementById("combo-val");
+    const progressTextEl = document.getElementById("progress-text");
+    const categoryBadgeEl = document.getElementById("category-badge");
+    const micSignalBar = document.getElementById("mic-signal-bar");
+    const modalAiHint = document.getElementById("modal-ai-hint");
+    const aiModalContent = document.getElementById("ai-modal-content");
+    const btnAiTts = document.getElementById("btn-ai-tts");
+    const modalSettings = document.getElementById("modal-settings");
+
+    const synth = new Tone.Synth().toDestination();
+    
+    function playSuccessSFX() {
+      const now = Tone.now();
+      synth.triggerAttackRelease("C5", "8n", now);
+      synth.triggerAttackRelease("E5", "8n", now + 0.1);
+      synth.triggerAttackRelease("G5", "8n", now + 0.2);
+      synth.triggerAttackRelease("C6", "4n", now + 0.3);
+    }
+
+    function playErrorSFX() {
+      const now = Tone.now();
+      synth.triggerAttackRelease("A3", "8n", now);
+      synth.triggerAttackRelease("F3", "8n", now + 0.15);
+    }
+
+    function initSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        recognizedTextEl.innerText = "⚠️ 您的瀏覽器不支援 SpeechRecognition 語音辨識，請使用 Chrome / Edge。";
+        btnMic.disabled = true;
+        btnMic.classList.add("opacity-50", "cursor-not-allowed");
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.lang = "zh-TW";
+      recognition.continuous = false;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        isListening = true;
+        btnMic.classList.add("mic-active", "bg-emerald-600");
+        btnMic.classList.remove("bg-rose-600");
+        recognizedTextEl.innerText = "🎙️ 傾聽中... 請唸出完整四字成語";
+        micSignalBar.style.width = "60%";
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript;
+        }
+        
+        // Clean up text
+        transcript = transcript.replace(/[^\u4e00-\u9fa5]/g, "");
+        recognizedTextEl.innerText = `辨識中：「${transcript}」`;
+
+        if (event.results[0].isFinal) {
+          verifyAnswer(transcript);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn("Speech recognition error:", event.error);
+        stopListening();
+        recognizedTextEl.innerText = "❌ 沒聽清楚，請再試一次！";
+        micSignalBar.style.width = "0%";
+      };
+
+      recognition.onend = () => {
+        stopListening();
+      };
+    }
+
+    function toggleListening() {
+      if (!recognition) return;
+      if (isListening) {
+        recognition.stop();
+        stopListening();
+      } else {
+        try {
+          recognition.start();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+
+    function stopListening() {
+      isListening = false;
+      btnMic.classList.remove("mic-active", "bg-emerald-600");
+      btnMic.classList.add("bg-rose-600");
+      micSignalBar.style.width = "0%";
+    }
+
+    function setupGame() {
+      // Filter Database based on Category
+      let filtered = IDIOM_DATABASE;
+      if (selectedCategory !== "all") {
+        filtered = IDIOM_DATABASE.filter(item => item.category === selectedCategory);
+      }
+      
+      // Shuffle Array
+      currentQuestions = [...filtered].sort(() => Math.random() - 0.5);
+      currentIndex = 0;
+      score = 0;
+      combo = 0;
+
+      updateStatsUI();
+      loadQuestion();
+    }
+
+    function loadQuestion() {
+      if (currentIndex >= currentQuestions.length) {
+        // Completed Game Loop
+        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+        recognizedTextEl.innerHTML = `🎉 恭喜通關！最終得分：<span class="text-amber-300 text-2xl">${score}</span>`;
+        idiomMeaningEl.innerText = "您已順利完成本區塊的所有成語語音挑戰！";
+        idiomDisplayContainer.innerHTML = `<div class="text-4xl text-amber-300 font-bold">🏆 通關大勝利 🏆</div>`;
+        return;
+      }
+
+      const q = currentQuestions[currentIndex];
+      idiomMeaningEl.innerText = q.meaning;
+      progressTextEl.innerText = `關卡：${currentIndex + 1} / ${currentQuestions.length}`;
+      
+      // Update badge label
+      const catMap = { animals: "🦁 動物類", efforts: "💪 勵志類", nature: "🏞️ 自然類", wisdom: "🧠 智慧類" };
+      categoryBadgeEl.innerText = catMap[q.category] || "🌟 綜合練習";
+
+      recognizedTextEl.innerText = "「請按下下方麥克風，完整唸出成語」";
+
+      // Render Character Blocks
+      idiomDisplayContainer.innerHTML = "";
+      for (let i = 0; i < q.idiom.length; i++) {
+        const charBox = document.createElement("div");
+        charBox.className = "w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center font-black text-2xl md:text-4xl transition-all duration-300 shadow-xl border-2";
+
+        if (i === q.missingIndex) {
+          charBox.classList.add("glow-missing", "text-amber-400");
+          charBox.innerText = "＿";
+          charBox.id = "missing-char-box";
+        } else {
+          charBox.classList.add("bg-indigo-900/80", "border-indigo-400/40", "text-slate-100");
+          charBox.innerText = q.idiom[i];
+        }
+        idiomDisplayContainer.appendChild(charBox);
+      }
+    }
+
+    function verifyAnswer(spokenText) {
+      const q = currentQuestions[currentIndex];
+      const targetIdiom = q.idiom;
+      const missingChar = q.idiom[q.missingIndex];
+
+      // Verification Condition 1: Direct match or includes full idiom
+      // Verification Condition 2: Speech captures at least 3 characters including missing char
+      const isExactMatch = spokenText.includes(targetIdiom);
+      const isMissingCharPresent = spokenText.includes(missingChar);
+      
+      // Compute overlapping char count
+      let overlapCount = 0;
+      for (let char of targetIdiom) {
+        if (spokenText.includes(char)) overlapCount++;
+      }
+
+      if (isExactMatch || (isMissingCharPresent && overlapCount >= 3)) {
+        // Correct Answer!
+        playSuccessSFX();
+        confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 } });
+        
+        // Reveal missing character in UI
+        const missingBox = document.getElementById("missing-char-box");
+        if (missingBox) {
+          missingBox.className = "w-16 h-16 md:w-20 md:h-20 rounded-2xl flex items-center justify-center font-black text-2xl md:text-4xl char-box-filled border-2 border-emerald-300";
+          missingBox.innerText = missingChar;
+        }
+
+        score += 100 + (combo * 20);
+        combo += 1;
+        updateStatsUI();
+
+        recognizedTextEl.innerHTML = `<span class="text-emerald-400">✨ 太棒了！答對了：「${targetIdiom}」</span>`;
+
+        // Advance to next question after delay
+        setTimeout(() => {
+          currentIndex++;
+          loadQuestion();
+        }, 2200);
+
+      } else {
+        // Wrong Answer
+        playErrorSFX();
+        combo = 0;
+        updateStatsUI();
+        recognizedTextEl.innerHTML = `<span class="text-rose-400">❌ 唸得不夠準確或遺漏關鍵字：「${spokenText}」，再試一次！</span>`;
+      }
+    }
+
+    function updateStatsUI() {
+      scoreValEl.innerText = score;
+      comboValEl.innerText = `${combo} 🔥`;
+    }
+
+    function speakText(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel(); // Stop ongoing speech
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-TW';
+        utterance.rate = 0.85; // Slightly slower for primary students
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    // Helper function for converting raw PCM16 audio array to WAV Blob
+    function pcmToWav(pcmData, sampleRate = 24000) {
+      const buffer = new ArrayBuffer(44 + pcmData.length * 2);
+      const view = new DataView(buffer);
+
+      // Write WAV Header
+      /* RIFF identifier */
+      view.setUint32(0, 0x52494646, false);
+      /* file length */
+      view.setUint32(4, 36 + pcmData.length * 2, true);
+      /* RIFF type */
+      view.setUint32(8, 0x57415645, false);
+      /* format chunk identifier */
+      view.setUint32(12, 0x666d7420, false);
+      /* format chunk length */
+      view.setUint32(16, 16, true);
+      /* sample format (raw PCM) */
+      view.setUint16(20, 1, true);
+      /* channel count (mono) */
+      view.setUint16(22, 1, true);
+      /* sample rate */
+      view.setUint32(24, sampleRate, true);
+      /* byte rate (sampleRate * 2) */
+      view.setUint32(28, sampleRate * 2, true);
+      /* block align */
+      view.setUint16(32, 2, true);
+      /* bits per sample */
+      view.setUint16(34, 16, true);
+      /* data chunk identifier */
+      view.setUint32(36, 0x64617461, false);
+      /* data chunk length */
+      view.setUint32(40, pcmData.length * 2, true);
+
+      // Write PCM Samples
+      for (let i = 0; i < pcmData.length; i++) {
+        view.setInt16(44 + i * 2, pcmData[i], true);
+      }
+
+      return new Blob([view], { type: 'audio/wav' });
+    }
+
+    async function fetchGeminiAIHint() {
+      const q = currentQuestions[currentIndex];
+      if (!q) return;
+
+      modalAiHint.classList.remove("hidden");
+      aiModalContent.innerHTML = `
+        <div class="flex items-center gap-3 text-amber-300">
+          <i class="fa-solid fa-circle-notch animate-spin text-2xl"></i> Gemini AI 正在編寫國小生專屬的成語情境...
+        </div>
+      `;
+
+      const prompt = `請為國小高年級學生設計一個關於成語「${q.idiom}」的生活化趣味情境造句與短句提示，字數在80字以內。請用語親切有趣。`;
+      
+      try {
+        const apiKey = ""; // Runtime automatically injects
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+        
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+          })
+        });
+
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "AI 目前無法連線，請稍後重試。";
+        currentAIHint = text;
+        aiModalContent.innerHTML = `<p class="text-emerald-200 font-medium">${text}</p>`;
+      } catch (err) {
+        console.error("Gemini LLM Call Error:", err);
+        aiModalContent.innerHTML = `<p class="text-rose-300">無法連結 AI 服務，成語「${q.idiom}」的意思是：${q.meaning}</p>`;
+        currentAIHint = q.meaning;
+      }
+    }
+
+    async function playGeminiTTS(textToSpeech) {
+      try {
+        const apiKey = "";
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `請用活潑清晰的語氣唸出：${textToSpeech}` }] }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } }
+              }
+            }
+          })
+        });
+
+        const result = await response.json();
+        const part = result?.candidates?.[0]?.content?.parts?.[0];
+        const audioData = part?.inlineData?.data;
+        const mimeType = part?.inlineData?.mimeType;
+
+        if (audioData && mimeType && mimeType.startsWith("audio/")) {
+          const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+          const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+          
+          // Decode Base64 to ArrayBuffer
+          const binaryString = atob(audioData);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          
+          const pcm16 = new Int16Array(bytes.buffer);
+          const wavBlob = pcmToWav(pcm16, sampleRate);
+          const audioUrl = URL.createObjectURL(wavBlob);
+          const audio = new Audio(audioUrl);
+          audio.play();
+        } else {
+          // Fallback to Native TTS
+          speakText(textToSpeech);
+        }
+      } catch (e) {
+        console.warn("Gemini TTS Error, using native speech synthesis fallback:", e);
+        speakText(textToSpeech);
+      }
+    }
+
+    window.onload = () => {
+      initSpeechRecognition();
+      setupGame();
+
+      // Mic Button Event
+      btnMic.addEventListener("click", toggleListening);
+
+      // Listen Demo Speech Button
+      btnDemoSpeech.addEventListener("click", () => {
+        const q = currentQuestions[currentIndex];
+        if (q) {
+          speakText(q.idiom);
+        }
+      });
+
+      // AI Hint Trigger
+      btnAiHint.addEventListener("click", fetchGeminiAIHint);
+
+      // AI Modal Close
+      document.getElementById("close-ai-modal").addEventListener("click", () => {
+        modalAiHint.classList.add("hidden");
+      });
+
+      // AI TTS Button inside Modal
+      btnAiTts.addEventListener("click", () => {
+        if (currentAIHint) {
+          playGeminiTTS(currentAIHint);
+        }
+      });
+
+      // Settings Modal Triggers
+      document.getElementById("btn-settings").addEventListener("click", () => {
+        modalSettings.classList.remove("hidden");
+      });
+
+      document.getElementById("btn-save-settings").addEventListener("click", () => {
+        selectedCategory = document.getElementById("select-category").value;
+        fuzzyThreshold = parseFloat(document.getElementById("input-sensitivity").value);
+        modalSettings.classList.add("hidden");
+        setupGame();
+      });
+    };
+  </script>
+</body>
+</html>
